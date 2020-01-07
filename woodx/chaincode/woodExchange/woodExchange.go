@@ -27,9 +27,8 @@ type User struct{
 
 // 木材
 type Wood struct {
-	Name string `json:"name"`
-	Id   string `json:"id"`
-	//Metadata map[string]string `json:"metadata"` // 特殊属性
+	woodId   string `json:"id"` //唯一编号
+	woodFeatureCode string `json:"fcode"` //特征码
 	Metadata string `json:"metadata"` // 特殊属性
 }
 
@@ -40,6 +39,9 @@ type WoodHistory struct {
 	CurrentOwnerId string `json:"current_owner_id"` // 变更后当前的拥有者
 }
 
+/**
+	k,v数据库，用组合键来区分不同实体
+ */
 func constructUserKey(userId string) string {
 	return fmt.Sprintf("user_%s", userId)
 }
@@ -52,6 +54,8 @@ func constructWoodKey(woodId string) string {
 	链码编写套路：
 		1.检查参数的个数是否正确
 		2.检验参数的正确性
+		3.检验数据是否存在 应该存在 || 不应该存在
+		4.写入状态
  */
 
 // 用户开户
@@ -119,15 +123,15 @@ func userDestroy(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	}
 
 	// 删除用户名下的木材资产
-	//user := new(User)
-	//if err := json.Unmarshal(userBytes, user); err != nil {
-	//	return shim.Error(fmt.Sprintf("unmarshal user error: %s", err))
-	//}
-	//for _, assetid := range user.Assets {
-	//	if err := stub.DelState(constructAssetKey(assetid)); err != nil {
-	//		return shim.Error(fmt.Sprintf("delete asset error: %s", err))
-	//	}
-	//}
+	user := new(User)
+	if err := json.Unmarshal(userBytes, user); err != nil {
+		return shim.Error(fmt.Sprintf("unmarshal user error: %s", err))
+	}
+	for _, woodid := range user.Woods {
+		if err := stub.DelState(constructWoodKey(woodid)); err != nil {
+			return shim.Error(fmt.Sprintf("delete asset error: %s", err))
+		}
+	}
 
 	return shim.Success(nil)
 }
@@ -154,16 +158,16 @@ func woodEnroll(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 		return shim.Error("user not found")
 	}
 
-	if assetBytes, err := stub.GetState(constructWoodKey(woodId)); err == nil && len(assetBytes) != 0 {
-		return shim.Error("asset already exist")
+	if woodBytes, err := stub.GetState(constructWoodKey(woodId)); err == nil && len(woodBytes) != 0 {
+		return shim.Error("wood already exist")
 	}
 
 	// 套路4：写入状态
-	// 1. 写入资产对象 2. 更新用户对象 3. 写入资产变更记录
-	wood := &wood{
-		Name:     woodName,
-		Id:       woodId,
-		Metadata: metadata,
+	// 1. 写入木材对象 2. 更新用户对象 3. 写入木材变更记录
+	wood := &Wood{
+		woodId:         woodId,
+		woodFeatureCode: woodFeatureCode,
+		Metadata:        metadata,
 	}
 	woodBytes, err := json.Marshal(wood)
 	if err != nil {
@@ -173,6 +177,7 @@ func woodEnroll(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 		return shim.Error(fmt.Sprintf("save wood error: %s", err))
 	}
 
+	// 更新用户下的木材资产列表
 	user := new(User)
 	// 反序列化user
 	if err := json.Unmarshal(userBytes, user); err != nil {
@@ -188,7 +193,7 @@ func woodEnroll(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 		return shim.Error(fmt.Sprintf("update user error: %s", err))
 	}
 
-	// 资产变更历史
+	// 更新木材资产变更历史
 	history := &WoodHistory{
 		WoodId:         woodId,
 		OriginOwnerId:  originOwner,
@@ -215,7 +220,9 @@ func woodEnroll(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	return shim.Success(nil)
 }
 
-// 资产转让
+
+
+// 木材交易：所用权的转让
 func woodExchange(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	// 套路1：检查参数的个数
 	if len(args) != 3 {
@@ -242,9 +249,9 @@ func woodExchange(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 		return shim.Error("user not found")
 	}
 
-	assetBytes, err := stub.GetState(constructWoodKey(woodId))
-	if err != nil || len(assetBytes) == 0 {
-		return shim.Error("asset not found")
+	woodBytes, err := stub.GetState(constructWoodKey(woodId))
+	if err != nil || len(woodBytes) == 0 {
+		return shim.Error("wood not found")
 	}
 
 	// 校验原始拥有者确实拥有当前变更的木材
@@ -253,27 +260,27 @@ func woodExchange(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	if err := json.Unmarshal(originOwnerBytes, originOwner); err != nil {
 		return shim.Error(fmt.Sprintf("unmarshal user error: %s", err))
 	}
-	aidexist := false
+	widexist := false
 	//遍历这个人名下的木材资产
 	for _, aid := range originOwner.Woods {
 		if aid == woodId {
-			aidexist = true
+			widexist = true
 			break
 		}
 	}
-	if !aidexist {
-		return shim.Error("asset owner not match")
+	if !widexist {
+		return shim.Error("wood owner not match")
 	}
 
 	// 套路4：写入状态
 	// 1. 拥有者删除资产id 2. 新拥有者加入资产id 3. 资产变更记录
 	woodIds := make([]string, 0)
-	for _, aid := range originOwner.Woods {
-		if aid == woodId {
+	for _, wid := range originOwner.Woods {
+		if wid == woodId {
 			continue
 		}
 		// 未转移的木材
-		woodIds = append(woodIds, aid)
+		woodIds = append(woodIds, wid)
 	}
 	originOwner.Woods = woodIds
 
@@ -365,12 +372,14 @@ func queryWood(stub shim.ChaincodeStubInterface, args []string) pb.Response {
 	}
 
 	// 套路3：验证数据是否存在 应该存在 or 不应该存在
-	assetBytes, err := stub.GetState(constructWoodKey(assetId))
-	if err != nil || len(assetBytes) == 0 {
+	woodBytes, err := stub.GetState(constructWoodKey(woodId))
+	// TODO: 调用API 比对woodFeatureCode特征码
+
+	if err != nil || len(woodBytes) == 0 {
 		return shim.Error("wood not found")
 	}
 
-	return shim.Success(assetBytes)
+	return shim.Success(woodBytes)
 }
 
 // 资产变更历史查询
@@ -386,10 +395,10 @@ func queryWoodHistory(stub shim.ChaincodeStubInterface, args []string) pb.Respon
 	if woodId == "" || woodFeatureCode == "" {
 		return shim.Error("invalid args")
 	}
-
+	//查询类型默认为：all 查询所有记录
 	queryType := "all"
-	if len(args) == 2 {
-		queryType = args[1]
+	if len(args) == 3 {
+		queryType = args[2]
 	}
 
 	if queryType != "all" && queryType != "enroll" && queryType != "exchange" {
@@ -397,14 +406,15 @@ func queryWoodHistory(stub shim.ChaincodeStubInterface, args []string) pb.Respon
 	}
 
 	// 套路3：验证数据是否存在 应该存在 or 不应该存在
-	assetBytes, err := stub.GetState(constructWoodKey(assetId))
-	if err != nil || len(assetBytes) == 0 {
-		return shim.Error("asset not found")
+
+	woodBytes, err := stub.GetState(constructWoodKey(woodId))
+	if err != nil || len(woodBytes) == 0 {
+		return shim.Error("wood not found")
 	}
 
 	// 查询相关数据
 	keys := make([]string, 0)
-	keys = append(keys, assetId)
+	keys = append(keys, woodId)
 	switch queryType {
 	case "enroll":
 		keys = append(keys, originOwner)
@@ -412,6 +422,7 @@ func queryWoodHistory(stub shim.ChaincodeStubInterface, args []string) pb.Respon
 	default:
 		return shim.Error(fmt.Sprintf("unsupport queryType: %s", queryType))
 	}
+	//hyperledger fabric 内部高级机制：内部提供的组合键
 	result, err := stub.GetStateByPartialCompositeKey("history", keys)
 	if err != nil {
 		return shim.Error(fmt.Sprintf("query history error: %s", err))
