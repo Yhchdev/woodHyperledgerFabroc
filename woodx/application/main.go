@@ -1,36 +1,32 @@
 package main
 
 import (
-"fmt"
-
-"context"
-"time"
-
-"net/http"
-
-"bytes"
-
-"github.com/gin-gonic/gin"
-"github.com/hyperledger/fabric-sdk-go/pkg/client/channel"
-"github.com/hyperledger/fabric-sdk-go/pkg/client/event"
-"github.com/hyperledger/fabric-sdk-go/pkg/client/ledger"
-"github.com/hyperledger/fabric-sdk-go/pkg/client/resmgmt"
-"github.com/hyperledger/fabric-sdk-go/pkg/core/config"
-"github.com/hyperledger/fabric-sdk-go/pkg/fabsdk"
+	"bytes"
+	"context"
+	"fmt"
+	"github.com/gin-gonic/gin"
+	"github.com/hyperledger/fabric-sdk-go/pkg/client/channel"
+	"github.com/hyperledger/fabric-sdk-go/pkg/client/event"
+	"github.com/hyperledger/fabric-sdk-go/pkg/client/ledger"
+	"github.com/hyperledger/fabric-sdk-go/pkg/client/resmgmt"
+	"github.com/hyperledger/fabric-sdk-go/pkg/core/config"
+	"github.com/hyperledger/fabric-sdk-go/pkg/fabsdk"
+	"net/http"
+	"time"
 )
 
 func main() {
 	router := gin.Default()
 
-	// 定义路由
+	// 定义路由：restful架构风格
 	{
 		router.POST("/users", userRegister)
 		router.GET("/users/:id", queryUser)
 		router.DELETE("/users/:id", deleteUser)
-		router.GET("/assets/get/:id", queryAsset)
-		router.POST("/assets/enroll", assetsEnroll)
-		router.POST("/assets/exchange", assetsExchange)
-		router.GET("/assets/exchange/history", assetsExchangeHistory)
+		router.GET("/wood/query", queryWood)
+		router.POST("/wood/enroll", woodEnroll)
+		router.POST("/wood/exchange", woodExchange)
+		router.GET("/wood/exchange/history", woodExchangeHistory)
 	}
 
 	router.Run() // listen and serve on 0.0.0.0:8080
@@ -41,9 +37,9 @@ type UserRegisterRequest struct {
 	Name string `form:"name" binding:"required"`
 }
 
-// 用户开户
+// 用户注册
 func userRegister(ctx *gin.Context) {
-	// 参数处理
+	// 参数处理：从表单获取
 	req := new(UserRegisterRequest)
 	if err := ctx.ShouldBind(req); err != nil {
 		ctx.AbortWithError(400, err)
@@ -66,6 +62,7 @@ func userRegister(ctx *gin.Context) {
 
 // 查询用户
 func queryUser(ctx *gin.Context) {
+	// 参数处理：从url路径上获取
 	userId := ctx.Param("id")
 
 	resp, err := channelQuery("queryUser", [][]byte{
@@ -98,11 +95,15 @@ func deleteUser(ctx *gin.Context) {
 }
 
 // 资产查询
-func queryAsset(ctx *gin.Context) {
-	assetId := ctx.Param("id")
+func queryWood(ctx *gin.Context) {
 
-	resp, err := channelQuery("queryAsset", [][]byte{
-		[]byte(assetId),
+	woodId := ctx.Query("id")
+	fcode := ctx.Query("fcode")
+	//assetId := ctx.Param("id")
+
+	resp, err := channelQuery("queryWood", [][]byte{
+		[]byte(woodId),
+		[]byte(fcode),
 	})
 
 	if err != nil {
@@ -114,24 +115,24 @@ func queryAsset(ctx *gin.Context) {
 	ctx.String(http.StatusOK, bytes.NewBuffer(resp.Payload).String())
 }
 
-type AssetsEnrollRequest struct {
-	AssetId   string `form:"assetsid" binding:"required"`
-	AssetName string `form:"assetname" binding:"required"`
+type WoodEnrollRequest struct {
+	WoodId   string `form:"woodid" binding:"required"`
+	woodFeatureCode string `form:"woodFeatureCode" binding:"required"`
 	Metadata  string `form:"metadata" binding:"required"`
 	OwnerId   string `form:"ownerid" binding:"required"`
 }
 
 // 资产登记
-func assetsEnroll(ctx *gin.Context) {
-	req := new(AssetsEnrollRequest)
+func woodEnroll(ctx *gin.Context) {
+	req := new(WoodEnrollRequest)
 	if err := ctx.ShouldBind(req); err != nil {
 		ctx.AbortWithError(400, err)
 		return
 	}
 
-	resp, err := channelExecute("assetEnroll", [][]byte{
-		[]byte(req.AssetName),
-		[]byte(req.AssetId),
+	resp, err := channelExecute("woodEnroll", [][]byte{
+		[]byte(req.WoodId),
+		[]byte(req.woodFeatureCode),
 		[]byte(req.Metadata),
 		[]byte(req.OwnerId),
 	})
@@ -144,23 +145,23 @@ func assetsEnroll(ctx *gin.Context) {
 	ctx.JSON(http.StatusOK, resp)
 }
 
-type AssetsExchangeRequest struct {
-	AssetId        string `form:"assetsid" binding:"required"`
+type WoodExchangeRequest struct {
+	WoodId        string `form:"woodid" binding:"required"`
 	OriginOwnerId  string `form:"originownerid" binding:"required"`
 	CurrentOwnerId string `form:"currentownerid" binding:"required"`
 }
 
 // 资产转让
-func assetsExchange(ctx *gin.Context) {
-	req := new(AssetsExchangeRequest)
+func woodExchange(ctx *gin.Context) {
+	req := new(WoodExchangeRequest)
 	if err := ctx.ShouldBind(req); err != nil {
 		ctx.AbortWithError(400, err)
 		return
 	}
 
-	resp, err := channelExecute("assetExchange", [][]byte{
+	resp, err := channelExecute("woodExchange", [][]byte{
 		[]byte(req.OriginOwnerId),
-		[]byte(req.AssetId),
+		[]byte(req.WoodId),
 		[]byte(req.CurrentOwnerId),
 	})
 
@@ -173,12 +174,12 @@ func assetsExchange(ctx *gin.Context) {
 }
 
 // 木材历史变更记录
-func assetsExchangeHistory(ctx *gin.Context) {
-	assetId := ctx.Query("assetid")
+func woodExchangeHistory(ctx *gin.Context) {
+	woodId := ctx.Query("woodid")
 	queryType := ctx.Query("querytype")
 
-	resp, err := channelQuery("queryAssetHistory", [][]byte{
-		[]byte(assetId),
+	resp, err := channelQuery("queryWoodHistory", [][]byte{
+		[]byte(woodId),
 		[]byte(queryType),
 	})
 
@@ -252,6 +253,8 @@ func queryBlockchain() {
 }
 
 // 区块链交互
+// 参数1： 函数名
+// 参数2： 函数所需参数
 func channelExecute(fcn string, args [][]byte) (channel.Response, error) {
 	ctx := sdk.ChannelContext(channelName, fabsdk.WithOrg(org), fabsdk.WithUser(user))
 
@@ -344,6 +347,7 @@ func channelQuery(fcn string, args [][]byte) (channel.Response, error) {
 	}, channel.WithTargetEndpoints("peer0.org1.wood.com"))
 }
 
+
 // 事件监听
 func eventHandle() {
 	ctx := sdk.ChannelContext(channelName, fabsdk.WithOrg(org), fabsdk.WithUser(user))
@@ -375,4 +379,7 @@ func eventHandle() {
 		}
 	}
 }
+
+
+
 

@@ -58,6 +58,7 @@ func FromFile(name string, opts ...Option) core.ConfigProvider {
 		backend.configViper.SetConfigFile(name)
 
 		// If a config file is found, read it in.
+
 		err = backend.configViper.MergeInConfig()
 		if err != nil {
 			return nil, errors.Wrap(err, "loading config file failed")

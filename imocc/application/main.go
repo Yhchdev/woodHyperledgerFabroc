@@ -9,12 +9,9 @@ import (
 	"net/http"
 
 	"bytes"
-
 	"github.com/gin-gonic/gin"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/channel"
 	"github.com/hyperledger/fabric-sdk-go/pkg/client/event"
-	"github.com/hyperledger/fabric-sdk-go/pkg/client/ledger"
-	"github.com/hyperledger/fabric-sdk-go/pkg/client/resmgmt"
 	"github.com/hyperledger/fabric-sdk-go/pkg/core/config"
 	"github.com/hyperledger/fabric-sdk-go/pkg/fabsdk"
 )
@@ -210,43 +207,43 @@ func init() {
 }
 
 // 区块链管理
-func manageBlockchain() {
-	// 表明身份
-	ctx := sdk.Context(fabsdk.WithOrg(org), fabsdk.WithUser(user))
-
-	cli, err := resmgmt.New(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	// 具体操作
-	cli.SaveChannel(resmgmt.SaveChannelRequest{}, resmgmt.WithOrdererEndpoint("orderer.imocc.com"), resmgmt.WithTargetEndpoints())
-}
+//func manageBlockchain() {
+//	// 表明身份
+//	ctx := sdk.Context(fabsdk.WithOrg(org), fabsdk.WithUser(user))
+//
+//	cli, err := resmgmt.New(ctx)
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	// 具体操作
+//	cli.SaveChannel(resmgmt.SaveChannelRequest{}, resmgmt.WithOrdererEndpoint("orderer.imocc.com"), resmgmt.WithTargetEndpoints())
+//}
 
 // 区块链数据查询 账本的查询
-func queryBlockchain() {
-	ctx := sdk.ChannelContext(channelName, fabsdk.WithOrg(org), fabsdk.WithUser(user))
-
-	cli, err := ledger.New(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	resp, err := cli.QueryInfo(ledger.WithTargetEndpoints("peer0.org1.imocc.com"))
-	if err != nil {
-		panic(err)
-	}
-
-	fmt.Println(resp)
-
-	// 1
-	cli.QueryBlockByHash(resp.BCI.CurrentBlockHash)
-
-	// 2
-	for i := uint64(0); i <= resp.BCI.Height; i++ {
-		cli.QueryBlock(i)
-	}
-}
+//func queryBlockchain() {
+//	ctx := sdk.ChannelContext(channelName, fabsdk.WithOrg(org), fabsdk.WithUser(user))
+//
+//	cli, err := ledger.New(ctx)
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	resp, err := cli.QueryInfo(ledger.WithTargetEndpoints("peer0.org1.imocc.com"))
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	fmt.Println(resp)
+//
+//	// 1
+//	cli.QueryBlockByHash(resp.BCI.CurrentBlockHash)
+//
+//	// 2
+//	for i := uint64(0); i <= resp.BCI.Height; i++ {
+//		cli.QueryBlock(i)
+//	}
+//}
 
 // 区块链交互
 func channelExecute(fcn string, args [][]byte) (channel.Response, error) {
@@ -342,33 +339,33 @@ func channelQuery(fcn string, args [][]byte) (channel.Response, error) {
 }
 
 // 事件监听
-func eventHandle() {
-	ctx := sdk.ChannelContext(channelName, fabsdk.WithOrg(org), fabsdk.WithUser(user))
-
-	cli, err := event.New(ctx)
-	if err != nil {
-		panic(err)
-	}
-
-	// 交易状态事件
-	// 链码事件 业务事件
-	// 区块事件
-	reg, blkevent, err := cli.RegisterBlockEvent()
-	if err != nil {
-		panic(err)
-	}
-	defer cli.Unregister(reg)
-
-	timeoutctx, cancel := context.WithTimeout(context.Background(), time.Minute)
-	defer cancel()
-
-	for {
-		select {
-		case evt := <-blkevent:
-			fmt.Printf("received a block", evt)
-		case <-timeoutctx.Done():
-			fmt.Println("event timeout, exit!")
-			return
-		}
-	}
-}
+//func eventHandle() {
+//	ctx := sdk.ChannelContext(channelName, fabsdk.WithOrg(org), fabsdk.WithUser(user))
+//
+//	cli, err := event.New(ctx)
+//	if err != nil {
+//		panic(err)
+//	}
+//
+//	// 交易状态事件
+//	// 链码事件 业务事件
+//	// 区块事件
+//	reg, blkevent, err := cli.RegisterBlockEvent()
+//	if err != nil {
+//		panic(err)
+//	}
+//	defer cli.Unregister(reg)
+//
+//	timeoutctx, cancel := context.WithTimeout(context.Background(), time.Minute)
+//	defer cancel()
+//
+//	for {
+//		select {
+//		case evt := <-blkevent:
+//			fmt.Printf("received a block", evt)
+//		case <-timeoutctx.Done():
+//			fmt.Println("event timeout, exit!")
+//			return
+//		}
+//	}
+//}
